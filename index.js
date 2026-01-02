@@ -22,30 +22,30 @@ function duDoan10g1(ket_qua) {
   return last10.slice(-1) || null;
 }
 
-// ================== NHẬN DIỆN CẦU ==================
+// ================== NHẬN DIỆN CẦU + ĐỘ TIN CẬY ==================
 function phatHienCau(ket_qua) {
   const clean = ket_qua.replace(/[^PB]/g, '');
   const last10 = clean.slice(-10);
 
-  if (last10.length < 4) return { loaiCau: 'Chưa đủ dữ liệu', du_doan: null };
+  if (last10.length < 4) return { loaiCau: 'Chưa đủ dữ liệu', du_doan: null, Do_Tin_Cay: 0 };
 
   // Cầu bệt
   if (last10.slice(-3).split('').every(v => v === last10.slice(-1))) {
-    return { loaiCau: 'Cầu bệt', du_doan: last10.slice(-1) };
+    return { loaiCau: 'Cầu bệt', du_doan: last10.slice(-1), Do_Tin_Cay: 85 };
   }
 
   // Cầu 1-1
   const last4 = last10.slice(-4);
-  if (/^(PB){2}$/.test(last4)) return { loaiCau: 'Cầu 1-1', du_doan: 'P' };
-  if (/^(BP){2}$/.test(last4)) return { loaiCau: 'Cầu 1-1', du_doan: 'B' };
+  if (/^(PB){2}$/.test(last4)) return { loaiCau: 'Cầu 1-1', du_doan: 'P', Do_Tin_Cay: 70 };
+  if (/^(BP){2}$/.test(last4)) return { loaiCau: 'Cầu 1-1', du_doan: 'B', Do_Tin_Cay: 70 };
 
   // Cầu nghiêng
   const P = (last10.match(/P/g) || []).length;
   const B = (last10.match(/B/g) || []).length;
-  if (P >= B + 4) return { loaiCau: 'Cầu nghiêng Con', du_doan: 'P' };
-  if (B >= P + 4) return { loaiCau: 'Cầu nghiêng Cái', du_doan: 'B' };
+  if (P >= B + 4) return { loaiCau: 'Cầu nghiêng Con', du_doan: 'P', Do_Tin_Cay: 68 };
+  if (B >= P + 4) return { loaiCau: 'Cầu nghiêng Cái', du_doan: 'B', Do_Tin_Cay: 68 };
 
-  return { loaiCau: 'Không rõ', du_doan: null };
+  return { loaiCau: 'Không rõ', du_doan: null, Do_Tin_Cay: 0 };
 }
 
 // ================== FETCH API GỐC + CACHE ==================
@@ -86,6 +86,7 @@ async function getFullBan() {
         cau_api: null,
         loai_cau: null,
         du_doan: null,
+        Do_Tin_Cay: 0,
         cap_nhat: null
       };
       continue;
@@ -102,6 +103,7 @@ async function getFullBan() {
       cau_api: cauApi,
       loai_cau: cau.loaiCau,
       du_doan: cau.du_doan || du10g1,
+      Do_Tin_Cay: cau.Do_Tin_Cay,
       cap_nhat: raw.time || null
     };
   }
@@ -116,7 +118,7 @@ app.get('/api/ban', async (req, res) => {
 });
 
 // ================== ROOT TEST ==================
-app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy'));
+app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy với Do_Tin_Cay'));
 
 // ================== START ==================
 app.listen(port, () => {
