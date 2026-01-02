@@ -105,7 +105,7 @@ let lastFetch = 0;
 async function fetchAll() {
   if (cache && Date.now() - lastFetch < 3000) return cache;
   try {
-    const res = await axios.get('https://apibcrvipapi2026.onrender.com/bcr/predict/all', { timeout: 7000 });
+    const res = await axios.get('https://bcrapj-9ska.onrender.com/sexy/all', { timeout: 7000 });
     cache = res.data;
     lastFetch = Date.now();
   } catch (err) {
