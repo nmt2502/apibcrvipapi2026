@@ -22,10 +22,11 @@ function duDoan10g1(ket_qua) {
   return last10.slice(-1) || null;
 }
 
-// ================== NHẬN DIỆN CẦU ĐẶC BIỆT + ĐỘ TIN CẬY ==================
+// ================== NHẬN DIỆN CẦU NÂNG CAO ==================
 function phatHienCau(ket_qua) {
   const clean = ket_qua.replace(/[^PB]/g, '');
   const arr = clean.split('');
+  const len = arr.length;
   const last10 = arr.slice(-10).join('');
 
   if (last10.length < 4) return { loaiCau: 'Chưa đủ dữ liệu', du_doan: null, Do_Tin_Cay: 0 };
@@ -48,8 +49,17 @@ function phatHienCau(ket_qua) {
   if (tail9 === 'PBBBPBBBP') return { loaiCau: 'Cầu 1-3', du_doan: 'B', Do_Tin_Cay: 74 };
   if (tail9 === 'BPPPBPPPB') return { loaiCau: 'Cầu 1-3', du_doan: 'P', Do_Tin_Cay: 74 };
 
-  // ===== CẦU DÍNH KÉP (ví dụ 2-3-4-2-2) =====
-  if (/PPBBPBB|BBPPBPP/.test(last10)) return { loaiCau: 'Cầu dính kép', du_doan: arr[arr.length - 1], Do_Tin_Cay: 80 };
+  // ===== CẦU DÍNH KÉP =====
+  if (/PPBBPBB|BBPPBPP/.test(last10)) return { loaiCau: 'Cầu dính kép', du_doan: arr[len - 1], Do_Tin_Cay: 80 };
+
+  // ===== CẦU DÍNH CON / DÍNH CÁI DÀI =====
+  // Pattern PB lặp liên tục dài → cầu dính Con
+  let pbSeq = arr.join('').match(/(PB){3,}/);
+  if (pbSeq) return { loaiCau: 'Cầu dính Con', du_doan: 'P', Do_Tin_Cay: 82 };
+
+  // Pattern BP lặp liên tục dài → cầu dính Cái
+  let bpSeq = arr.join('').match(/(BP){3,}/);
+  if (bpSeq) return { loaiCau: 'Cầu dính Cái', du_doan: 'B', Do_Tin_Cay: 82 };
 
   // ===== CẦU NGHIÊNG =====
   const Pcount = (last10.match(/P/g) || []).length;
@@ -68,7 +78,7 @@ let lastFetch = 0;
 async function fetchAll() {
   if (cache && Date.now() - lastFetch < 3000) return cache;
   try {
-    const res = await axios.get('https://apibcrvipapi2026.onrender.com/bcr/predict/all', { timeout: 7000 });
+    const res = await axios.get('https://bcrapj-9ska.onrender.com/sexy/all', { timeout: 7000 });
     cache = res.data;
     lastFetch = Date.now();
   } catch (err) {
@@ -131,7 +141,7 @@ app.get('/api/ban', async (req, res) => {
 });
 
 // ================== ROOT ==================
-app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy với Do_Tin_Cay và cầu đặc biệt'));
+app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy với Do_Tin_Cay và cầu dính dài'));
 
 // ================== START ==================
 app.listen(port, () => {
