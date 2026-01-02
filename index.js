@@ -22,29 +22,42 @@ function duDoan10g1(ket_qua) {
   return last10.slice(-1) || null;
 }
 
-// ================== NHẬN DIỆN CẦU + ĐỘ TIN CẬY ==================
+// ================== NHẬN DIỆN CẦU ĐẶC BIỆT + ĐỘ TIN CẬY ==================
 function phatHienCau(ket_qua) {
   const clean = ket_qua.replace(/[^PB]/g, '');
-  const last10 = clean.slice(-10);
+  const arr = clean.split('');
+  const last10 = arr.slice(-10).join('');
 
   if (last10.length < 4) return { loaiCau: 'Chưa đủ dữ liệu', du_doan: null, Do_Tin_Cay: 0 };
 
-  // Cầu bệt
-  if (last10.slice(-3).split('').every(v => v === last10.slice(-1))) {
-    return { loaiCau: 'Cầu bệt', du_doan: last10.slice(-1), Do_Tin_Cay: 85 };
-  }
+  // ===== CẦU BỆT =====
+  const countBhet = arr.slice(-5).reverse().findIndex((v, i) => i > 0 && v !== arr[arr.length - 1]);
+  if (countBhet >= 2) return { loaiCau: `Cầu bệt ${arr[arr.length - 1] === 'P' ? 'Con' : 'Cái'}`, du_doan: arr[arr.length - 1], Do_Tin_Cay: 85 };
 
-  // Cầu 1-1
-  const last4 = last10.slice(-4);
-  if (/^(PB){2}$/.test(last4)) return { loaiCau: 'Cầu 1-1', du_doan: 'P', Do_Tin_Cay: 70 };
-  if (/^(BP){2}$/.test(last4)) return { loaiCau: 'Cầu 1-1', du_doan: 'B', Do_Tin_Cay: 70 };
+  // ===== CẦU 1-1 =====
+  if (/^(PB){2}$/.test(last10.slice(-4))) return { loaiCau: 'Cầu 1-1', du_doan: 'P', Do_Tin_Cay: 70 };
+  if (/^(BP){2}$/.test(last10.slice(-4))) return { loaiCau: 'Cầu 1-1', du_doan: 'B', Do_Tin_Cay: 70 };
 
-  // Cầu nghiêng
-  const P = (last10.match(/P/g) || []).length;
-  const B = (last10.match(/B/g) || []).length;
-  if (P >= B + 4) return { loaiCau: 'Cầu nghiêng Con', du_doan: 'P', Do_Tin_Cay: 68 };
-  if (B >= P + 4) return { loaiCau: 'Cầu nghiêng Cái', du_doan: 'B', Do_Tin_Cay: 68 };
+  // ===== CẦU 1-2 =====
+  const tail6 = last10.slice(-6);
+  if (tail6 === 'PBBPBB') return { loaiCau: 'Cầu 1-2', du_doan: 'B', Do_Tin_Cay: 72 };
+  if (tail6 === 'BPPBPP') return { loaiCau: 'Cầu 1-2', du_doan: 'P', Do_Tin_Cay: 72 };
 
+  // ===== CẦU 1-3 =====
+  const tail9 = last10.slice(-9);
+  if (tail9 === 'PBBBPBBBP') return { loaiCau: 'Cầu 1-3', du_doan: 'B', Do_Tin_Cay: 74 };
+  if (tail9 === 'BPPPBPPPB') return { loaiCau: 'Cầu 1-3', du_doan: 'P', Do_Tin_Cay: 74 };
+
+  // ===== CẦU DÍNH KÉP (ví dụ 2-3-4-2-2) =====
+  if (/PPBBPBB|BBPPBPP/.test(last10)) return { loaiCau: 'Cầu dính kép', du_doan: arr[arr.length - 1], Do_Tin_Cay: 80 };
+
+  // ===== CẦU NGHIÊNG =====
+  const Pcount = (last10.match(/P/g) || []).length;
+  const Bcount = (last10.match(/B/g) || []).length;
+  if (Pcount >= Bcount + 4) return { loaiCau: 'Cầu nghiêng Con', du_doan: 'P', Do_Tin_Cay: 68 };
+  if (Bcount >= Pcount + 4) return { loaiCau: 'Cầu nghiêng Cái', du_doan: 'B', Do_Tin_Cay: 68 };
+
+  // ===== Mặc định =====
   return { loaiCau: 'Không rõ', du_doan: null, Do_Tin_Cay: 0 };
 }
 
@@ -53,7 +66,7 @@ let cache = null;
 let lastFetch = 0;
 
 async function fetchAll() {
-  if (cache && Date.now() - lastFetch < 3000) return cache; // cache 3 giây
+  if (cache && Date.now() - lastFetch < 3000) return cache;
   try {
     const res = await axios.get('https://apibcrvipapi2026.onrender.com/bcr/predict/all', { timeout: 7000 });
     cache = res.data;
@@ -117,8 +130,8 @@ app.get('/api/ban', async (req, res) => {
   res.json(data);
 });
 
-// ================== ROOT TEST ==================
-app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy với Do_Tin_Cay'));
+// ================== ROOT ==================
+app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy với Do_Tin_Cay và cầu đặc biệt'));
 
 // ================== START ==================
 app.listen(port, () => {
