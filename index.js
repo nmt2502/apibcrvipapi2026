@@ -55,23 +55,6 @@ function phatHienCau10G(ket_qua) {
   return { loaiCau: 'Không rõ', du_doan: null };
 }
 
-// ================== 20G1 ==================
-function analyze20G1(rawKetQua) {
-  const arr = rawKetQua.replace(/T/g, '').split('');
-  if (arr.length < 20) return { Du_Doan: null, Do_Tin_Cay: 0, cau: 'Chưa đủ 20 ván' };
-  const last20 = arr.slice(-20);
-  let P = 0, B = 0;
-  last20.forEach(x => { if (x === 'P') P++; if (x === 'B') B++; });
-  const maxSide = P > B ? 'P' : 'B';
-  const maxCount = Math.max(P, B);
-  let tin_cay = 0;
-  if (maxCount >= 13) tin_cay = 85;
-  else if (maxCount === 12) tin_cay = 75;
-  else if (maxCount === 11) tin_cay = 65;
-  if (tin_cay === 0) return { Du_Doan: null, Do_Tin_Cay: 0, cau: 'Không rõ' };
-  return { Du_Doan: maxSide, Do_Tin_Cay: tin_cay, cau: `20G1 nghiêng ${maxSide === 'P' ? 'Con' : 'Cái'}` };
-}
-
 // =======================
 // ANALYZE
 // =======================
