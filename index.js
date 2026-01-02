@@ -75,7 +75,15 @@ async function getBan(banId) {
   });
 
   if (!raw) {
-    return { ban: banId, trang_thai: 'Không có dữ liệu' };
+    return {
+      ban: banId,
+      trang_thai: 'Không có dữ liệu',
+      ket_qua: '',
+      cau_api: null,
+      loai_cau: null,
+      du_doan: null,
+      cap_nhat: null
+    };
   }
 
   const ket_qua = raw.ket_qua || '';
@@ -100,7 +108,7 @@ banList.forEach(ban => {
   });
 });
 
-// ================== API TẤT CẢ ==================
+// ================== API TẤT CẢ BÀN ==================
 app.get('/api/ban', async (req, res) => {
   const result = {};
   for (const ban of banList) {
@@ -109,8 +117,10 @@ app.get('/api/ban', async (req, res) => {
   res.json(result);
 });
 
-// ================== TEST ROOT + START ==================
+// ================== ROOT TEST ==================
 app.get('/', (req, res) => res.send('✅ BCR API chạy'));
+
+// ================== START ==================
 app.listen(port, () => {
   console.log(`🚀 BCR API FULL C01–C16 chạy tại port ${port}`);
 });
