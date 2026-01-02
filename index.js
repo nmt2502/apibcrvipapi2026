@@ -1,4 +1,5 @@
 const express = require('express');
+const axios = require('axios');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -6,14 +7,6 @@ const port = process.env.PORT || 3000;
 const banList = Array.from({ length: 16 }, (_, i) =>
   `C${(i + 1).toString().padStart(2, '0')}`
 );
-
-// ================== MOCK DỮ LIỆU ==================
-const mockData = banList.map((ban, idx) => ({
-  cấm: ban,
-  cau: `${4 + idx % 3}'t Con`,
-  ket_qua: idx % 2 === 0 ? 'PPBBPPBBPP' : 'BBPPBBPPBB',
-  'Thời gian': new Date().toLocaleTimeString()
-}));
 
 // ================== 10G1 ==================
 function duDoan10g1(ket_qua) {
@@ -55,11 +48,35 @@ function phatHienCau(ket_qua) {
   return { loaiCau: 'Không rõ', du_doan: null };
 }
 
+// ================== FETCH 1 LẦN + CACHE ==================
+let cache = null;
+let lastFetch = 0;
+
+async function fetchAll() {
+  if (cache && Date.now() - lastFetch < 3000) return cache;
+  try {
+    const res = await axios.get('https://bcrapj-9ska.onrender.com/sexy/all', { timeout: 7000 });
+    cache = res.data;
+    lastFetch = Date.now();
+  } catch (err) {
+    console.error('❌ Lỗi fetch API gốc:', err.message);
+    cache = [];
+  }
+  return cache;
+}
+
+// ================== NORMALIZE ==================
+function normalizeBanId(str = '') {
+  return str.toUpperCase().replace(/O/g, '0').replace(/\s+/g, '').trim();
+}
+
 // ================== LẤY FULL BÀN ==================
 async function getFullBan() {
+  const all = await fetchAll();
   const result = {};
+
   for (const banId of banList) {
-    const raw = mockData.find(item => item.cấm === banId);
+    const raw = all.find(item => normalizeBanId(item.cấm) === banId);
     if (!raw) {
       result[banId] = {
         ban: banId,
@@ -74,7 +91,7 @@ async function getFullBan() {
     }
 
     const ket_qua = raw.ket_qua || '';
-    const cauApi = raw.cau || null;
+    const cauApi = raw.cau || raw.cầu || null;
     const du10g1 = duDoan10g1(ket_qua);
     const cau = phatHienCau(ket_qua);
 
@@ -84,9 +101,10 @@ async function getFullBan() {
       cau_api: cauApi,
       loai_cau: cau.loaiCau,
       du_doan: cau.du_doan || du10g1,
-      cap_nhat: raw['Thời gian']
+      cap_nhat: raw['Thời gian'] || null
     };
   }
+
   return result;
 }
 
@@ -96,8 +114,8 @@ app.get('/api/ban', async (req, res) => {
   res.json(data);
 });
 
-// ================== ROOT TEST ==================
-app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy (mock data)'));
+// ================== ROOT ==================
+app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy'));
 
 // ================== START ==================
 app.listen(port, () => {
