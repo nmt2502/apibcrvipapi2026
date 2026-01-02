@@ -1,17 +1,12 @@
 const express = require('express');
 const axios = require('axios');
-
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
-const SOURCE_API = 'https://bcrapj-9ska.onrender.com/sexy/all';
-
-// =======================
-// UTILS
-// =======================
-function normalizeKetQua(ket_qua) {
-  return ket_qua.replace(/T/g, '');
-}
+// Bàn C01 → C16
+const banList = Array.from({ length: 16 }, (_, i) =>
+  `C${(i + 1).toString().padStart(2, '0')}`
+);
 
 // ================== 10G1 ==================
 function duDoan10g1(ket_qua) {
@@ -27,18 +22,16 @@ function duDoan10g1(ket_qua) {
   return last10.slice(-1) || null;
 }
 
-// ================== NHẬN DIỆN CẦU 10G ==================
-function phatHienCau10G(ket_qua) {
+// ================== NHẬN DIỆN CẦU ==================
+function phatHienCau(ket_qua) {
   const clean = ket_qua.replace(/[^PB]/g, '');
   const last10 = clean.slice(-10);
+
   if (last10.length < 4) return { loaiCau: 'Chưa đủ dữ liệu', du_doan: null };
 
   // Cầu bệt
   if (last10.slice(-3).split('').every(v => v === last10.slice(-1))) {
-    return {
-      loaiCau: `Cầu bệt ${last10.slice(-1) === 'P' ? 'Con' : 'Cái'}`,
-      du_doan: last10.slice(-1)
-    };
+    return { loaiCau: 'Cầu bệt', du_doan: last10.slice(-1) };
   }
 
   // Cầu 1-1
@@ -55,101 +48,69 @@ function phatHienCau10G(ket_qua) {
   return { loaiCau: 'Không rõ', du_doan: null };
 }
 
-// =======================
-// ANALYZE
-// =======================
-function analyzeCau(rawKetQua) {
-  const ket_qua = normalizeKetQua(rawKetQua);
-  const arr = ket_qua.split('');
-  const len = arr.length;
-  if (len < 3) return { cau: 'Chờ cầu đẹp', Du_Doan: null, Do_Tin_Cay: 0 };
-  const last = arr[len - 1];
+// ================== FETCH 1 LẦN + CACHE ==================
+let cache = null;
+let lastFetch = 0;
 
-  // ==== Cầu bệt ====
-  let count = 1;
-  for (let i = len - 1; i > 0; i--) {
-    if (arr[i] === arr[i - 1]) count++;
-    else break;
-  }
-  if (count >= 3) {
-    let tc = 65;
-    if (count >= 4) tc = 75;
-    if (count >= 5) tc = 85;
-    return {
-      cau: `${count} bệt ${last === 'P' ? 'Con' : 'Cái'}`,
-      Du_Doan: last,
-      Do_Tin_Cay: tc
-    };
-  }
-
-  // ==== Cầu 1-1 ====
-  let is11 = true;
-  for (let i = len - 6; i < len - 1; i++) {
-    if (arr[i] === arr[i + 1]) { is11 = false; break; }
-  }
-  if (is11) return { cau: 'Cầu 1-1', Du_Doan: last === 'P' ? 'B' : 'P', Do_Tin_Cay: 70 };
-
-  // ==== Cầu 1-2 ====
-  const tail6 = arr.slice(-6).join('');
-  if (tail6 === 'PBBPBB' || tail6 === 'BPPBPP') return { cau: 'Cầu 1-2', Du_Doan: arr[len - 3], Do_Tin_Cay: 72 };
-
-  // ==== Cầu 1-3 ====
-  const tail9 = arr.slice(-9).join('');
-  if (tail9 === 'PBBBPBBBP' || tail9 === 'BPPPBPPPB') return { cau: 'Cầu 1-3', Du_Doan: arr[len - 4], Do_Tin_Cay: 74 };
-
-  // ==== Cầu nghiêng ====
-  const recent = arr.slice(-10);
-  let stat = { P: 0, B: 0 };
-  recent.forEach(x => stat[x]++);
-  if (Math.abs(stat.P - stat.B) >= 3) {
-    const side = stat.P > stat.B ? 'P' : 'B';
-    return { cau: `Cầu nghiêng ${side === 'P' ? 'Con' : 'Cái'}`, Du_Doan: side, Do_Tin_Cay: 68 };
-  }
-
-  // ==== 10G1 ====
-  const du10 = duDoan10g1(rawKetQua);
-  const cau10 = phatHienCau10G(rawKetQua);
-  if (cau10.du_doan) {
-    let tin_cay = 70;
-    if (du10 && du10 === cau10.du_doan) tin_cay += 8;
-    const kq20 = analyze20G1(rawKetQua);
-    if (kq20.Du_Doan === cau10.du_doan) tin_cay += 10;
-    return { cau: `${cau10.loaiCau} + 10G1`, Du_Doan: cau10.du_doan, Do_Tin_Cay: Math.min(tin_cay, 95) };
-  }
-
-  // ==== FALLBACK 10G1 ====
-  if (du10) return { cau: '10G1', Du_Doan: du10, Do_Tin_Cay: 65 };
-
-  return { cau: 'Chờ cầu đẹp', Du_Doan: null, Do_Tin_Cay: 0 };
+async function fetchAll() {
+  if (cache && Date.now() - lastFetch < 3000) return cache;
+  const res = await axios.get('https://bcrapj-9ska.onrender.com/sexy/all');
+  cache = res.data;
+  lastFetch = Date.now();
+  return cache;
 }
 
-// =======================
-// API FULL BÀN
-// =======================
-app.get('/bcr/predict/all', async (req, res) => {
-  try {
-    const { data } = await axios.get(SOURCE_API, { timeout: 7000 });
-    if (!Array.isArray(data)) return res.json({ loi: 'API gốc không trả danh sách bàn' });
+// ================== LẤY 1 BÀN ==================
+function normalizeBanId(str = '') {
+  return str.toUpperCase().replace(/O/g, '0').replace(/\s+/g, '').trim();
+}
 
-    const result = [];
-    for (let i = 1; i <= 16; i++) {
-      const banCode = `C${i.toString().padStart(2, '0')}`;
-      const banData = data.find(x => x.ban === banCode);
-      if (!banData || !banData.ket_qua) {
-        result.push({ ban: banCode, cau: 'Không có dữ liệu', ket_qua: '', Du_Doan: null, Do_Tin_Cay: 0 });
-        continue;
-      }
-      const r = analyzeCau(banData.ket_qua);
-      result.push({ ban: banCode, cau: r.cau, ket_qua: banData.ket_qua, Du_Doan: r.Du_Doan, Do_Tin_Cay: r.Do_Tin_Cay });
-    }
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ loi: 'Lỗi lấy API gốc', chi_tiet: err.message });
+async function getBan(banId) {
+  const all = await fetchAll();
+  const banNorm = normalizeBanId(banId);
+
+  const raw = all.find(item => {
+    const apiBan = normalizeBanId(item.cấm);
+    return apiBan === banNorm;
+  });
+
+  if (!raw) {
+    return { ban: banId, trang_thai: 'Không có dữ liệu' };
   }
+
+  const ket_qua = raw.ket_qua || '';
+  const cauApi = raw.cau || raw.cầu || null;
+  const du10g1 = duDoan10g1(ket_qua);
+  const cau = phatHienCau(ket_qua);
+
+  return {
+    ban: banId,
+    ket_qua,
+    cau_api: cauApi,
+    loai_cau: cau.loaiCau,
+    du_doan: cau.du_doan || du10g1,
+    cap_nhat: raw['Thời gian']
+  };
+}
+
+// ================== API TỪNG BÀN ==================
+banList.forEach(ban => {
+  app.get(`/api/${ban.toLowerCase()}`, async (req, res) => {
+    res.json(await getBan(ban));
+  });
 });
 
-// =======================
-// START
-// =======================
-app.get('/', (req, res) => res.send('✅ BCR API is running'));
-app.listen(PORT, () => console.log(`BCR VIP http://localhost:${PORT}`));
+// ================== API TẤT CẢ ==================
+app.get('/api/ban', async (req, res) => {
+  const result = {};
+  for (const ban of banList) {
+    result[ban] = await getBan(ban);
+  }
+  res.json(result);
+});
+
+// ================== TEST ROOT + START ==================
+app.get('/', (req, res) => res.send('✅ BCR API chạy'));
+app.listen(port, () => {
+  console.log(`🚀 BCR API FULL C01–C16 chạy tại port ${port}`);
+});
