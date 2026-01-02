@@ -3,7 +3,6 @@ const axios = require('axios');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Danh sách bàn C01 → C16
 const banList = Array.from({ length: 16 }, (_, i) =>
   `C${(i + 1).toString().padStart(2, '0')}`
 );
@@ -23,52 +22,80 @@ function duDoan10g1(ket_qua) {
 }
 
 // ================== NHẬN DIỆN CẦU NÂNG CAO ==================
-function phatHienCau(ket_qua) {
+function phatHienCauBe(ket_qua) {
   const clean = ket_qua.replace(/[^PB]/g, '');
   const arr = clean.split('');
   const len = arr.length;
-  const last10 = arr.slice(-10).join('');
 
-  if (last10.length < 4) return { loaiCau: 'Chưa đủ dữ liệu', du_doan: null, Do_Tin_Cay: 0 };
+  if (len < 3) return { loaiCau: 'Chưa đủ dữ liệu', du_doan: null, Do_Tin_Cay: 50, thoi_diem_bat_dau_du_doan: null };
 
-  // ===== CẦU BỆT =====
-  const countBhet = arr.slice(-5).reverse().findIndex((v, i) => i > 0 && v !== arr[arr.length - 1]);
-  if (countBhet >= 2) return { loaiCau: `Cầu bệt ${arr[arr.length - 1] === 'P' ? 'Con' : 'Cái'}`, du_doan: arr[arr.length - 1], Do_Tin_Cay: 85 };
+  let loaiCau = 'Không rõ';
+  let du_doan = null;
+  let Do_Tin_Cay = 50; // min 50%
+  let thoi_diem_bat_dau_du_doan = null;
 
-  // ===== CẦU 1-1 =====
-  if (/^(PB){2}$/.test(last10.slice(-4))) return { loaiCau: 'Cầu 1-1', du_doan: 'P', Do_Tin_Cay: 70 };
-  if (/^(BP){2}$/.test(last10.slice(-4))) return { loaiCau: 'Cầu 1-1', du_doan: 'B', Do_Tin_Cay: 70 };
+  // Duyệt từ đầu đến cuối để tìm pattern
+  for (let i = 0; i < len; i++) {
+    const tail = arr.slice(i).join('');
 
-  // ===== CẦU 1-2 =====
-  const tail6 = last10.slice(-6);
-  if (tail6 === 'PBBPBB') return { loaiCau: 'Cầu 1-2', du_doan: 'B', Do_Tin_Cay: 72 };
-  if (tail6 === 'BPPBPP') return { loaiCau: 'Cầu 1-2', du_doan: 'P', Do_Tin_Cay: 72 };
+    // ===== CẦU BỆT =====
+    let count = 1;
+    for (let j = i + 1; j < len; j++) {
+      if (arr[j] === arr[i]) count++;
+      else break;
+    }
+    if (count >= 3) {
+      loaiCau = `Cầu bệt ${arr[i] === 'P' ? 'Con' : 'Cái'}`;
+      du_doan = arr[i];
+      Do_Tin_Cay = Math.min(50 + (count - 3) * 10, 92);
+      thoi_diem_bat_dau_du_doan = i;
+      break;
+    }
 
-  // ===== CẦU 1-3 =====
-  const tail9 = last10.slice(-9);
-  if (tail9 === 'PBBBPBBBP') return { loaiCau: 'Cầu 1-3', du_doan: 'B', Do_Tin_Cay: 74 };
-  if (tail9 === 'BPPPBPPPB') return { loaiCau: 'Cầu 1-3', du_doan: 'P', Do_Tin_Cay: 74 };
+    // ===== CẦU 1-1 =====
+    const last4 = arr.slice(Math.max(len - 4, 0)).join('');
+    if (/^(PB){2}$/.test(last4)) { loaiCau = 'Cầu 1-1'; du_doan = 'P'; Do_Tin_Cay = 70; thoi_diem_bat_dau_du_doan = len-4; break; }
+    if (/^(BP){2}$/.test(last4)) { loaiCau = 'Cầu 1-1'; du_doan = 'B'; Do_Tin_Cay = 70; thoi_diem_bat_dau_du_doan = len-4; break; }
 
-  // ===== CẦU DÍNH KÉP =====
-  if (/PPBBPBB|BBPPBPP/.test(last10)) return { loaiCau: 'Cầu dính kép', du_doan: arr[len - 1], Do_Tin_Cay: 80 };
+    // ===== CẦU 1-2 / 1-3 =====
+    const tail6 = arr.slice(-6).join('');
+    if (tail6 === 'PBBPBB') { loaiCau = 'Cầu 1-2'; du_doan = 'B'; Do_Tin_Cay = 72; thoi_diem_bat_dau_du_doan = len-6; break; }
+    if (tail6 === 'BPPBPP') { loaiCau = 'Cầu 1-2'; du_doan = 'P'; Do_Tin_Cay = 72; thoi_diem_bat_dau_du_doan = len-6; break; }
 
-  // ===== CẦU DÍNH CON / DÍNH CÁI DÀI =====
-  // Pattern PB lặp liên tục dài → cầu dính Con
-  let pbSeq = arr.join('').match(/(PB){3,}/);
-  if (pbSeq) return { loaiCau: 'Cầu dính Con', du_doan: 'P', Do_Tin_Cay: 82 };
+    const tail9 = arr.slice(-9).join('');
+    if (tail9 === 'PBBBPBBBP') { loaiCau = 'Cầu 1-3'; du_doan = 'B'; Do_Tin_Cay = 74; thoi_diem_bat_dau_du_doan = len-9; break; }
+    if (tail9 === 'BPPPBPPPB') { loaiCau = 'Cầu 1-3'; du_doan = 'P'; Do_Tin_Cay = 74; thoi_diem_bat_dau_du_doan = len-9; break; }
 
-  // Pattern BP lặp liên tục dài → cầu dính Cái
-  let bpSeq = arr.join('').match(/(BP){3,}/);
-  if (bpSeq) return { loaiCau: 'Cầu dính Cái', du_doan: 'B', Do_Tin_Cay: 82 };
+    // ===== CẦU DÍNH KÉP =====
+    if (/PPBBPBB|BBPPBPP/.test(tail)) { loaiCau = 'Cầu dính kép'; du_doan = arr[len - 1]; Do_Tin_Cay = 85; thoi_diem_bat_dau_du_doan = i; break; }
 
-  // ===== CẦU NGHIÊNG =====
-  const Pcount = (last10.match(/P/g) || []).length;
-  const Bcount = (last10.match(/B/g) || []).length;
-  if (Pcount >= Bcount + 4) return { loaiCau: 'Cầu nghiêng Con', du_doan: 'P', Do_Tin_Cay: 68 };
-  if (Bcount >= Pcount + 4) return { loaiCau: 'Cầu nghiêng Cái', du_doan: 'B', Do_Tin_Cay: 68 };
+    // ===== CẦU DÍNH CON / DÍNH CÁI DÀI =====
+    const matchCon = tail.match(/(PB){3,}/);
+    if (matchCon) { loaiCau = 'Cầu dính Con'; du_doan = 'P'; Do_Tin_Cay = Math.min(75 + (matchCon[0].length/2 - 3)*5, 92); thoi_diem_bat_dau_du_doan = i; break; }
+    const matchCai = tail.match(/(BP){3,}/);
+    if (matchCai) { loaiCau = 'Cầu dính Cái'; du_doan = 'B'; Do_Tin_Cay = Math.min(75 + (matchCai[0].length/2 - 3)*5, 92); thoi_diem_bat_dau_du_doan = i; break; }
 
-  // ===== Mặc định =====
-  return { loaiCau: 'Không rõ', du_doan: null, Do_Tin_Cay: 0 };
+    // ===== CẦU NGHIÊNG =====
+    const Pcount = (tail.match(/P/g) || []).length;
+    const Bcount = (tail.match(/B/g) || []).length;
+    if (Pcount >= Bcount + 4) { loaiCau = 'Cầu nghiêng Con'; du_doan = 'P'; Do_Tin_Cay = 68; thoi_diem_bat_dau_du_doan = i; break; }
+    if (Bcount >= Pcount + 4) { loaiCau = 'Cầu nghiêng Cái'; du_doan = 'B'; Do_Tin_Cay = 68; thoi_diem_bat_dau_du_doan = i; break; }
+
+    // ===== CÁC PATTERN MỚI: 232, 123, 124 =====
+    const tail10 = arr.slice(-10).join('');
+    if (/PBBPBBPBBP|BPBPBPBPBP/.test(tail10)) { loaiCau = 'Cầu 232'; du_doan = arr[len - 1]; Do_Tin_Cay = 85; thoi_diem_bat_dau_du_doan = len-10; break; }
+    if (/PBBPPBBPPB|BPBPPBPBPP/.test(tail10)) { loaiCau = 'Cầu 123'; du_doan = arr[len - 1]; Do_Tin_Cay = 82; thoi_diem_bat_dau_du_doan = len-10; break; }
+    if (/PBBPBBPPBP|BPBPBPPBPB/.test(tail10)) { loaiCau = 'Cầu 124'; du_doan = arr[len - 1]; Do_Tin_Cay = 82; thoi_diem_bat_dau_du_doan = len-10; break; }
+  }
+
+  if (!du_doan) {
+    du_doan = duDoan10g1(ket_qua);
+    loaiCau = loaiCau === 'Không rõ' ? 'Chờ cầu đẹp' : loaiCau;
+    Do_Tin_Cay = 50;
+    thoi_diem_bat_dau_du_doan = len-1;
+  }
+
+  return { loaiCau, du_doan, Do_Tin_Cay, thoi_diem_bat_dau_du_doan };
 }
 
 // ================== FETCH API GỐC + CACHE ==================
@@ -78,7 +105,7 @@ let lastFetch = 0;
 async function fetchAll() {
   if (cache && Date.now() - lastFetch < 3000) return cache;
   try {
-    const res = await axios.get('https://bcrapj-9ska.onrender.com/sexy/all', { timeout: 7000 });
+    const res = await axios.get('https://apibcrvipapi2026.onrender.com/bcr/predict/all', { timeout: 7000 });
     cache = res.data;
     lastFetch = Date.now();
   } catch (err) {
@@ -88,12 +115,10 @@ async function fetchAll() {
   return cache;
 }
 
-// ================== CHUẨN HÓA TÊN BÀN ==================
 function normalizeBanId(str = '') {
   return str.toUpperCase().replace(/O/g, '0').replace(/\s+/g, '').trim();
 }
 
-// ================== LẤY FULL BÀN ==================
 async function getFullBan() {
   const all = await fetchAll();
   const result = {};
@@ -110,6 +135,7 @@ async function getFullBan() {
         loai_cau: null,
         du_doan: null,
         Do_Tin_Cay: 0,
+        thoi_diem_bat_dau_du_doan: null,
         cap_nhat: null
       };
       continue;
@@ -117,16 +143,16 @@ async function getFullBan() {
 
     const ket_qua = raw.ket_qua || '';
     const cauApi = raw.cau || null;
-    const du10g1 = duDoan10g1(ket_qua);
-    const cau = phatHienCau(ket_qua);
+    const cau = phatHienCauBe(ket_qua);
 
     result[banId] = {
       ban: banId,
       ket_qua,
       cau_api: cauApi,
       loai_cau: cau.loaiCau,
-      du_doan: cau.du_doan || du10g1,
+      du_doan: cau.du_doan,
       Do_Tin_Cay: cau.Do_Tin_Cay,
+      thoi_diem_bat_dau_du_doan: cau.thoi_diem_bat_dau_du_doan,
       cap_nhat: raw.time || null
     };
   }
@@ -140,10 +166,8 @@ app.get('/api/ban', async (req, res) => {
   res.json(data);
 });
 
-// ================== ROOT ==================
-app.get('/', (req, res) => res.send('✅ BCR API FULL BÀN chạy với Do_Tin_Cay và cầu dính dài'));
+app.get('/', (req, res) => res.send('✅ BCR API FULL C01–C16 với pattern 232, 123, 124, bẻ cầu & Do_Tin_Cay 50–92%'));
 
-// ================== START ==================
 app.listen(port, () => {
   console.log(`🚀 BCR API FULL C01–C16 chạy tại port ${port}`);
 });
