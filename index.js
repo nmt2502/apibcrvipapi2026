@@ -8,18 +8,24 @@ app.get("/api/taixiu/predict", async (req, res) => {
   try {
     const { data } = await axios.get(HISTORY_API);
 
-    const total = data.length;
-    const lastSession = data[total - 1].session;
+    if (!Array.isArray(data) || data.length < 10) {
+      return res.json({ error: "Not enough data" });
+    }
 
-    // ===== 1️⃣ TẠO CHUỖI CẦU =====
+    // ===== 1️⃣ PHIÊN TIẾP THEO =====
+    const phien = data[0].session + 1;
+
+    // ===== 2️⃣ CHUỖI CẦU (TỪ TRÊN → XUỐNG) =====
     const WINDOW = 5;
-    const chuoiArr = data.slice(-WINDOW).map(i => i.tx);
-    const chuoi_cau = chuoiArr.join("");
+    const chuoi_cau = data
+      .slice(0, WINDOW)
+      .map(i => i.tx)
+      .join("");
 
-    // ===== 2️⃣ VIP 2026: SO SÁNH CHUỖI =====
+    // ===== 3️⃣ VIP 2026 – SO SÁNH CHUỖI =====
     let tai = 0, xiu = 0;
 
-    for (let i = 0; i < total - WINDOW; i++) {
+    for (let i = 0; i + WINDOW < data.length; i++) {
       const pattern = data
         .slice(i, i + WINDOW)
         .map(x => x.tx)
@@ -32,9 +38,8 @@ app.get("/api/taixiu/predict", async (req, res) => {
       }
     }
 
-    // ===== 3️⃣ DỰ ĐOÁN =====
-    let du_doan;
-    let base;
+    // ===== 4️⃣ DỰ ĐOÁN =====
+    let du_doan, base;
 
     if (tai + xiu > 0) {
       du_doan = tai >= xiu ? "TAI" : "XIU";
@@ -44,16 +49,17 @@ app.get("/api/taixiu/predict", async (req, res) => {
       base = 0.55;
     }
 
-    // ===== 4️⃣ CHỐNG CẦU BỆT =====
+    // ===== 5️⃣ CHỐNG CẦU BỆT =====
     if (/^(T{4,}|X{4,})$/.test(chuoi_cau)) {
       du_doan = du_doan === "TAI" ? "XIU" : "TAI";
       base -= 0.1;
     }
 
-    const do_tin_cay = Math.min(Math.max(base * 100, 55), 95).toFixed(0) + "%";
+    const do_tin_cay =
+      Math.min(Math.max(base * 100, 55), 95).toFixed(0) + "%";
 
     res.json({
-      phien: lastSession + 1,
+      phien,
       du_doan,
       chuoi_cau,
       do_tin_cay
