@@ -8,11 +8,11 @@ app.get("/api/taixiu/predict", async (req, res) => {
   try {
     const { data } = await axios.get(HISTORY_API);
 
-    if (!Array.isArray(data) || data.length < 10) {
+    if (!Array.isArray(data) || data.length < 20) {
       return res.json({ error: "Not enough data" });
     }
 
-    // ===== 1️⃣ PHIÊN TIẾP THEO =====
+    // ===== 1️⃣ PHIÊN TIẾP THEO (API mới → cũ) =====
     const phien = data[0].session + 1;
 
     // ===== 2️⃣ CHUỖI CẦU (TỪ TRÊN → XUỐNG) =====
@@ -22,7 +22,7 @@ app.get("/api/taixiu/predict", async (req, res) => {
       .map(i => i.tx)
       .join("");
 
-    // ===== 3️⃣ VIP 2026 – SO SÁNH CHUỖI =====
+    // ===== 3️⃣ VIP 2026 – PATTERN MATCHING =====
     let tai = 0, xiu = 0;
 
     for (let i = 0; i + WINDOW < data.length; i++) {
@@ -38,25 +38,32 @@ app.get("/api/taixiu/predict", async (req, res) => {
       }
     }
 
-    // ===== 4️⃣ DỰ ĐOÁN =====
-    let du_doan, base;
+    const total = tai + xiu;
 
-    if (tai + xiu > 0) {
-      du_doan = tai >= xiu ? "TAI" : "XIU";
-      base = Math.max(tai, xiu) / (tai + xiu);
-    } else {
-      du_doan = Math.random() > 0.5 ? "TAI" : "XIU";
-      base = 0.55;
+    // ===== 4️⃣ LỌC CẦU XẤU (VIP) =====
+    if (total < 6) {
+      return res.json({
+        phien,
+        du_doan: "NO_BET",
+        chuoi_cau,
+        do_tin_cay: "0%"
+      });
     }
 
-    // ===== 5️⃣ CHỐNG CẦU BỆT =====
+    // ===== 5️⃣ DỰ ĐOÁN =====
+    let du_doan = tai > xiu ? "Tài" : "Xỉu";
+    let base = Math.max(tai, xiu) / total;
+
+    // ===== 6️⃣ CHỐNG CẦU BỆT / LOẠN =====
     if (/^(T{4,}|X{4,})$/.test(chuoi_cau)) {
-      du_doan = du_doan === "TAI" ? "XIU" : "TAI";
-      base -= 0.1;
+      base -= 0.1; // không đảo cứng, chỉ giảm độ tin cậy
     }
 
-    const do_tin_cay =
-      Math.min(Math.max(base * 100, 55), 95).toFixed(0) + "%";
+    // ===== 7️⃣ GIỚI HẠN ĐỘ TIN CẬY (THỰC TẾ) =====
+    const do_tin_cay = Math.min(
+      Math.max(base * 100, 60),
+      78
+    ).toFixed(0) + "%";
 
     res.json({
       phien,
