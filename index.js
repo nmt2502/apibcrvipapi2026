@@ -4,21 +4,20 @@ import axios from "axios";
 const app = express();
 const HISTORY_API = "https://sunwin-ai-bot.onrender.com/api/taixiu/history";
 
-/* =========================
-   ENGINE B – SO SÁNH CHUỖI CẦU
-========================= */
-function patternCompareEngine(data, windows = [4, 6, 8]) {
-  const phien = data[0].session + 1;
+/* ==================================================
+   TIỆN ÍCH LẤY CHUỖI
+================================================== */
+const getChuoi = (data, len) =>
+  data.slice(0, len).map(i => i.tx).join("");
 
-  const getPattern = w => data.slice(0, w).map(i => i.tx).join("");
+/* ==================================================
+   ENGINE B – SO SÁNH CHUỖI CẦU DÀI
+================================================== */
+function patternCompareEngine(data) {
+  let voteT = 0;
+  let voteX = 0;
 
-  // lọc cầu 1-1
-  if (/^(TX){2,}|^(XT){2,}/.test(getPattern(4))) {
-    return { du_doan: "NO_BET", ly_do: "Cầu loạn 1-1" };
-  }
-
-  let voteT = 0, voteX = 0;
-
+  const WINDOWS = [6, 9, 12]; // chuỗi dài
   const stat = (pattern) => {
     let T = 0, X = 0, hits = 0;
     for (let i = 0; i + pattern.length < data.length; i++) {
@@ -31,17 +30,24 @@ function patternCompareEngine(data, windows = [4, 6, 8]) {
     return { T, X, hits };
   };
 
-  for (const w of windows) {
-    const p = getPattern(w);
+  // lọc cầu loạn 1-1
+  if (/^(TX){3,}|^(XT){3,}/.test(getChuoi(data, 6))) {
+    return { du_doan: "NO_BET", ly_do: "Cầu loạn dài" };
+  }
+
+  for (const w of WINDOWS) {
+    const p = getChuoi(data, w);
     const { T, X, hits } = stat(p);
+
     if (hits >= 6) {
-      const weight = w >= 8 ? 3 : (w >= 6 ? 2 : 1);
-      (T >= X ? voteT : voteX) += weight;
+      const weight = w === 12 ? 3 : (w === 9 ? 2 : 1);
+      if (T >= X) voteT += weight;
+      else voteX += weight;
     }
   }
 
   if (voteT + voteX < 3 || Math.abs(voteT - voteX) < 2) {
-    return { du_doan: "NO_BET", ly_do: "Pattern yếu" };
+    return { du_doan: "NO_BET", ly_do: "Chuỗi dài yếu" };
   }
 
   return {
@@ -50,18 +56,18 @@ function patternCompareEngine(data, windows = [4, 6, 8]) {
   };
 }
 
-/* =========================
-   ENGINE A – VIP ỔN ĐỊNH PRO
-========================= */
+/* ==================================================
+   ENGINE A – VIP ỔN ĐỊNH PRO (NGẮN + TRUNG)
+================================================== */
 function vipOnDinhPro(data) {
-  const phien = data[0].session + 1;
+  const W3 = getChuoi(data, 3);
+  const W5 = getChuoi(data, 5);
+  const W7 = getChuoi(data, 7);
 
-  const getPattern = (w) =>
-    data.slice(0, w).map(i => i.tx).join("");
-
-  const W3 = getPattern(3);
-  const W5 = getPattern(5);
-  const W7 = getPattern(7);
+  // cầu loạn
+  if (/^(TX){1,}|^(XT){1,}/.test(W3)) {
+    return { du_doan: "NO_BET", ly_do: "Cầu loạn ngắn" };
+  }
 
   const stat = (pattern) => {
     let T = 0, X = 0;
@@ -78,45 +84,44 @@ function vipOnDinhPro(data) {
   const s5 = stat(W5);
   const s7 = stat(W7);
 
-  if (/^(TX){1,}|^(XT){1,}/.test(W3)) {
-    return { du_doan: "NO_BET", ly_do: "Cầu loạn 1-1" };
-  }
-
   if (s5.total < 8 && s7.total < 8) {
     return { du_doan: "NO_BET", ly_do: "Mẫu ít" };
   }
 
-  let voteT = 0, voteX = 0;
+  let voteT = 0;
+  let voteX = 0;
 
-  if (s3.total >= 6) (s3.T >= s3.X ? voteT++ : voteX++);
-  if (s5.total >= 8) (s5.T >= s5.X ? voteT += 2 : voteX += 2);
-  if (s7.total >= 8) (s7.T >= s7.X ? voteT += 3 : voteX += 3);
+  if (s3.total >= 6) s3.T >= s3.X ? voteT++ : voteX++;
+  if (s5.total >= 8) s5.T >= s5.X ? voteT += 2 : voteX += 2;
+  if (s7.total >= 8) s7.T >= s7.X ? voteT += 3 : voteX += 3;
 
   const last10 = data.slice(0, 10);
-  const t10 = last10.filter(i => i.tx === "T").length;
-  (t10 >= 5 ? voteT++ : voteX++);
+  last10.filter(i => i.tx === "T").length >= 5 ? voteT++ : voteX++;
 
   if (Math.abs(voteT - voteX) < 3) {
     return { du_doan: "NO_BET", ly_do: "Không đồng thuận" };
   }
 
   let base = Math.max(voteT, voteX) / (voteT + voteX);
+
   if (/^(T{4,}|X{4,})$/.test(W5)) base -= 0.1;
 
   return {
     du_doan: voteT > voteX ? "Tài" : "Xỉu",
     base,
-    chuoi_cau: W7
+    chuoi_ngan: W5,
+    chuoi_trung: W7
   };
 }
 
-/* =========================
-   API PREDICT – GỘP 2 ENGINE
-========================= */
+/* ==================================================
+   API PREDICT – GỘP CHUỖI DÀI
+================================================== */
 app.get("/api/taixiu/predict", async (req, res) => {
   try {
     const { data } = await axios.get(HISTORY_API);
-    if (!Array.isArray(data) || data.length < 30) {
+
+    if (!Array.isArray(data) || data.length < 40) {
       return res.json({ error: "Not enough data" });
     }
 
@@ -125,7 +130,6 @@ app.get("/api/taixiu/predict", async (req, res) => {
     const A = vipOnDinhPro(data);
     const B = patternCompareEngine(data);
 
-    // nếu 1 trong 2 NO_BET → BỎ
     if (A.du_doan === "NO_BET" || B.du_doan === "NO_BET") {
       return res.json({
         phien,
@@ -134,23 +138,27 @@ app.get("/api/taixiu/predict", async (req, res) => {
       });
     }
 
-    // nếu 2 engine khác nhau → BỎ
     if (A.du_doan !== B.du_doan) {
       return res.json({
         phien,
         du_doan: "NO_BET",
-        ly_do: "2 engine không đồng thuận"
+        ly_do: "Ngắn – dài không cùng hướng"
       });
     }
 
-    // đồng thuận → OK
     const do_tin_cay =
-      Math.min(Math.max(((A.base + B.base) / 2) * 100, 65), 80).toFixed(0) + "%";
+      Math.min(
+        Math.max(((A.base + B.base) / 2) * 100, 66),
+        82
+      ).toFixed(0) + "%";
 
     res.json({
       phien,
       du_doan: A.du_doan,
-      chuoi_cau: A.chuoi_cau,
+      chuoi_cau_ngan: A.chuoi_ngan,
+      chuoi_cau_trung: A.chuoi_trung,
+      chuoi_cau_dai: getChuoi(data, 12),
+      chuoi_cau_rat_dai: getChuoi(data, 20),
       do_tin_cay
     });
 
@@ -159,10 +167,10 @@ app.get("/api/taixiu/predict", async (req, res) => {
   }
 });
 
-/* =========================
+/* ==================================================
    SERVER
-========================= */
+================================================== */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🔥 VIP ỔN ĐỊNH PRO + PATTERN ENGINE running on port", PORT);
+  console.log("🔥 VIP PRO + CHUỖI CẦU DÀI running on port", PORT);
 });
