@@ -2,49 +2,76 @@ import express from "express";
 import axios from "axios";
 
 const app = express();
-
 const HISTORY_API = "https://sunwin-ai-bot.onrender.com/api/taixiu/history";
 
 app.get("/api/taixiu/predict", async (req, res) => {
   try {
     const { data } = await axios.get(HISTORY_API);
 
-    const N = 50;
-    const last = data.slice(-N);
+    const total = data.length;
+    const phien = data[total - 1]?.id + 1 || total + 1;
 
+    // ==== 1️⃣ LẤY CHUỖI CẦU ====
+    const WINDOW = 5;
+    const last = data.slice(-WINDOW);
+
+    const chuoi = last
+      .map(i => (i.result === "tai" ? "T" : "X"))
+      .join("");
+
+    // ==== 2️⃣ PATTERN MATCHING ====
     let tai = 0, xiu = 0;
-    last.forEach(i => {
-      if (i.result === "tai") tai++;
-      if (i.result === "xiu") xiu++;
-    });
 
-    const probTai = tai / N;
-    const probXiu = xiu / N;
+    for (let i = 0; i < total - WINDOW; i++) {
+      const pattern = data
+        .slice(i, i + WINDOW)
+        .map(x => (x.result === "tai" ? "T" : "X"))
+        .join("");
 
-    const result = probTai >= probXiu ? "TAI" : "XIU";
+      if (pattern === chuoi) {
+        const next = data[i + WINDOW]?.result;
+        if (next === "tai") tai++;
+        if (next === "xiu") xiu++;
+      }
+    }
+
+    // ==== 3️⃣ DỰ ĐOÁN CHÍNH ====
+    let duDoan;
+    let confidenceBase;
+
+    if (tai + xiu > 0) {
+      duDoan = tai >= xiu ? "TAI" : "XIU";
+      confidenceBase = Math.max(tai, xiu) / (tai + xiu);
+    } else {
+      // fallback nếu không có pattern
+      duDoan = Math.random() > 0.5 ? "TAI" : "XIU";
+      confidenceBase = 0.55;
+    }
+
+    // ==== 4️⃣ CHỐNG CẦU BỆT ====
+    if (/^(T{4,}|X{4,})$/.test(chuoi)) {
+      duDoan = duDoan === "TAI" ? "XIU" : "TAI";
+      confidenceBase -= 0.1;
+    }
+
+    const doTinCay = Math.min(
+      Math.max(confidenceBase * 100, 55),
+      95
+    ).toFixed(0) + "%";
 
     res.json({
-      status: "success",
-      source: "sunwin-ai-bot",
-      algorithm: "Hybrid Probability 2026",
-      history_used: N,
-      statistics: {
-        tai,
-        xiu,
-        prob_tai: +probTai.toFixed(2),
-        prob_xiu: +probXiu.toFixed(2)
-      },
-      prediction: {
-        result,
-        confidence: `${Math.max(probTai, probXiu) * 100 | 0}%`,
-        trend: result === "TAI" ? "TAI_DANG_LEN" : "XIU_DANG_LEN"
-      },
-      timestamp: Math.floor(Date.now() / 1000)
+      phien,
+      du_doan: duDoan,
+      chuoi_cau: chuoi,
+      do_tin_cay: doTinCay
     });
 
   } catch (err) {
-    res.status(500).json({ status: "error", message: "API error" });
+    res.status(500).json({ error: "Predict error" });
   }
 });
 
-app.listen(3000, () => console.log("Predict API running"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Predict API running");
+});
