@@ -9,69 +9,60 @@ app.get("/api/taixiu/predict", async (req, res) => {
     const { data } = await axios.get(HISTORY_API);
 
     const total = data.length;
-    const phien = data[total - 1]?.id + 1 || total + 1;
+    const lastSession = data[total - 1].session;
 
-    // ==== 1️⃣ LẤY CHUỖI CẦU ====
+    // ===== 1️⃣ TẠO CHUỖI CẦU =====
     const WINDOW = 5;
-    const last = data.slice(-WINDOW);
+    const chuoiArr = data.slice(-WINDOW).map(i => i.tx);
+    const chuoi_cau = chuoiArr.join("");
 
-    const chuoi = last
-      .map(i => (i.result === "tai" ? "T" : "X"))
-      .join("");
-
-    // ==== 2️⃣ PATTERN MATCHING ====
+    // ===== 2️⃣ VIP 2026: SO SÁNH CHUỖI =====
     let tai = 0, xiu = 0;
 
     for (let i = 0; i < total - WINDOW; i++) {
       const pattern = data
         .slice(i, i + WINDOW)
-        .map(x => (x.result === "tai" ? "T" : "X"))
+        .map(x => x.tx)
         .join("");
 
-      if (pattern === chuoi) {
-        const next = data[i + WINDOW]?.result;
-        if (next === "tai") tai++;
-        if (next === "xiu") xiu++;
+      if (pattern === chuoi_cau) {
+        const next = data[i + WINDOW]?.tx;
+        if (next === "T") tai++;
+        if (next === "X") xiu++;
       }
     }
 
-    // ==== 3️⃣ DỰ ĐOÁN CHÍNH ====
-    let duDoan;
-    let confidenceBase;
+    // ===== 3️⃣ DỰ ĐOÁN =====
+    let du_doan;
+    let base;
 
     if (tai + xiu > 0) {
-      duDoan = tai >= xiu ? "TAI" : "XIU";
-      confidenceBase = Math.max(tai, xiu) / (tai + xiu);
+      du_doan = tai >= xiu ? "TAI" : "XIU";
+      base = Math.max(tai, xiu) / (tai + xiu);
     } else {
-      // fallback nếu không có pattern
-      duDoan = Math.random() > 0.5 ? "TAI" : "XIU";
-      confidenceBase = 0.55;
+      du_doan = Math.random() > 0.5 ? "TAI" : "XIU";
+      base = 0.55;
     }
 
-    // ==== 4️⃣ CHỐNG CẦU BỆT ====
-    if (/^(T{4,}|X{4,})$/.test(chuoi)) {
-      duDoan = duDoan === "TAI" ? "XIU" : "TAI";
-      confidenceBase -= 0.1;
+    // ===== 4️⃣ CHỐNG CẦU BỆT =====
+    if (/^(T{4,}|X{4,})$/.test(chuoi_cau)) {
+      du_doan = du_doan === "TAI" ? "XIU" : "TAI";
+      base -= 0.1;
     }
 
-    const doTinCay = Math.min(
-      Math.max(confidenceBase * 100, 55),
-      95
-    ).toFixed(0) + "%";
+    const do_tin_cay = Math.min(Math.max(base * 100, 55), 95).toFixed(0) + "%";
 
     res.json({
-      phien,
-      du_doan: duDoan,
-      chuoi_cau: chuoi,
-      do_tin_cay: doTinCay
+      phien: lastSession + 1,
+      du_doan,
+      chuoi_cau,
+      do_tin_cay
     });
 
   } catch (err) {
-    res.status(500).json({ error: "Predict error" });
+    res.status(500).json({ error: "Predict API error" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Predict API running");
-});
+app.listen(PORT, () => console.log("Predict API running"));
